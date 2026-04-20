@@ -1,10 +1,10 @@
 import { readBlockConfig, createLumaProductImagePicture } from "../../scripts/aem.js";
-import { isAuthorEnvironment } from "../../scripts/scripts.js";
+import { isAuthorEnvironment, normalizeCategoryValue } from "../../scripts/scripts.js";
 import { getEnvironmentValue, getHostname } from "../../scripts/utils.js";
 
-const AUTHOR_PRODUCTS_ENDPOINT = "/graphql/execute.json/luma3/lumaProductListByPath;";
-const PUBLISH_GRAPHQL_PROXY_ENDPOINT = "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/luma-fetch";
-const PUBLISH_PRODUCTS_ENDPOINT_KEY = "lumaProductListByPath";
+const AUTHOR_PRODUCTS_ENDPOINT = "/graphql/execute.json/dsn-eds-configuration/productsListByPath;";
+const PUBLISH_GRAPHQL_PROXY_ENDPOINT = "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/fetch-product-information";
+const PUBLISH_PRODUCTS_ENDPOINT_KEY = "productsListByPath";
 let categoryProductsAuthorBasePromise;
 let categoryProductsPublishEnvironmentPromise;
 
@@ -62,14 +62,12 @@ function buildCard(item, isAuthor) {
 
   const meta = document.createElement("div");
   meta.className = "cpl-card-meta";
-  const categoryText = category && category.length ? category.join(", ") : "";
   const cat = document.createElement("p");
   cat.className = "cpl-card-category";
-  // Format category: remove "luma:" or "Lumaproducts:", replace commas with slashes, uppercase
-  cat.textContent = categoryText
-    .replace(/^(luma:|lumaproducts:)/gi, "") // Remove luma/lumaproducts prefix (case-insensitive)
-    .replace(/\//g, " / ") // Replace commas with slashes
-    .toUpperCase(); // Convert to uppercase
+  cat.textContent = category
+    .map((catValue) => normalizeCategoryValue(catValue).replace(/\//g, " / "))
+    .filter(Boolean)
+    .join(" / ");
   const title = document.createElement("h3");
   title.className = "cpl-card-title";
   title.textContent = name || "";
@@ -98,12 +96,39 @@ async function fetchProducts(path) {
       },
     });
     const json = await resp.json();
-    return json?.data?.lumaProductsModelList?.items || [];
+    return json?.data?.productModelList?.items || [];
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error("Category Products Lister: fetch error", e);
     return [];
   }
+}
+
+function filterByCategories(items, tags) {
+  if (!tags) return items;
+  const filterList = (Array.isArray(tags) ? tags : `${tags}`.split(','))
+    .map((t) => normalizeCategoryValue(`${t}`.trim()).toLowerCase())
+    .filter(Boolean);
+  if (!filterList.length) return items;
+  return items.filter((item) =>
+    (item.category || []).some((cat) => {
+      const normalized = normalizeCategoryValue(cat).toLowerCase();
+      return filterList.some((tag) => normalized.includes(tag) || tag.includes(normalized));
+    })
+  );
+}
+
+function coerceConfigScalar(v) {
+  if (v == null) return '';
+  if (Array.isArray(v)) return coerceConfigScalar(v[0]);
+  return String(v).trim();
+}
+
+function readCardsPerRow(cfg, block) {
+  const raw = coerceConfigScalar(cfg?.["cards-per-row"]);
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return 5;
+  return Math.min(6, Math.max(1, n));
 }
 
 function renderHeader(container, selectedTags) {
@@ -135,8 +160,7 @@ export default async function decorate(block) {
     block.querySelector("a[href]")?.textContent?.trim() ||
     "";
 
-  // Also try readBlockConfig as fallback for document-based authoring
-  const cfg = readBlockConfig(block);
+  const cfg = readBlockConfig(block) || {};
   if (!folderHref) {
     folderHref = cfg?.folder || cfg?.reference || cfg?.path || "";
   }
@@ -157,7 +181,13 @@ export default async function decorate(block) {
   }
 
   // Extract tags - for Universal Editor they'll be in data attributes
-  const tags = block.dataset?.["cqTags"] || cfg?.tags || cfg?.["cq:tags"] || "";
+  const tags = block.dataset?.["cqTags"]
+    || cfg?.tags
+    || cfg?.["cq-tags"]
+    || cfg?.["cq:tags"]
+    || "";
+
+  const cardsPerRow = readCardsPerRow(cfg, block);
 
   // Clear author table
   block.innerHTML = "";
@@ -166,9 +196,11 @@ export default async function decorate(block) {
 
   const grid = document.createElement("div");
   grid.className = "cpl-grid";
+  grid.style.setProperty("--cpl-columns", cardsPerRow);
   block.append(grid);
 
-  const items = await fetchProducts(folderHref);
+  const allItems = await fetchProducts(folderHref);
+  const items = filterByCategories(allItems, tags);
   if (!items || items.length === 0) {
     const empty = document.createElement("p");
     empty.className = "cpl-empty";

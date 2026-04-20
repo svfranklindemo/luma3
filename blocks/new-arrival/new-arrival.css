@@ -261,13 +261,40 @@
   .na-carousel-wrapper {
     padding: 0 2rem;
   }
-  
+
   .na-card {
     flex: 0 0 220px;
     width: 220px;
   }
-  
+
   .na-card-media {
     height: 220px;
   }
+}
+
+/* Vertical Layout */
+.na-vertical {
+  padding: 0 1rem;
+  width: 100%;
+}
+
+.na-vertical .na-card {
+  flex: none;
+  width: 100%;
+  max-width: 320px;
+  margin-bottom: 1.5rem;
+}
+
+.na-vertical .na-card:last-child {
+  margin-bottom: 0;
+}
+
+.na-vertical .na-card-meta {
+  text-align: left;
+  align-items: flex-start;
+}
+
+.na-vertical .na-card-category,
+.na-vertical .na-card-title {
+  text-align: left;
 }
