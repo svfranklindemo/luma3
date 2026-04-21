@@ -653,7 +653,9 @@ body.luma-theme .hero h2 {
 body.luma-theme .na-carousel-wrapper{
     padding: 0;
 }
-
+.section.luma-hero.hero-container .hero.block {
+  height: auto;
+}
 @media (width <= 768px) {
   body.luma-theme main .section.join-us-container .join-us.block {
     flex: 0 0 100% !important;
